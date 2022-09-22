@@ -212,10 +212,11 @@ class DownloadQueue:
             **self.config.YTDL_OPTIONS,
         }).extract_info(url, download=False)
 
-    async def __add_entry(self, entry, quality, format, already):
+    async def __add_entry(self, entry, quality, format, already, playlist_title=''):
         etype = entry.get('_type') or 'video'
         if etype == 'playlist':
             entries = entry['entries']
+            playlist_title = entry['title']
             log.info(f'playlist detected with {len(entries)} entries')
             playlist_index_digits = len(str(len(entries)))
             results = []
@@ -225,7 +226,7 @@ class DownloadQueue:
                 for property in ("id", "title", "uploader", "uploader_id"):
                     if property in entry:
                         etr[f"playlist_{property}"] = entry[property]
-                results.append(await self.__add_entry(etr, quality, format, already))
+                results.append(await self.__add_entry(etr, quality, format, already, playlist_title))
             if any(res['status'] == 'error' for res in results):
                 return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
             return {'status': 'ok'}
@@ -233,6 +234,8 @@ class DownloadQueue:
             if not self.queue.exists(entry['id']):
                 dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'], quality, format)
                 dldirectory = self.config.DOWNLOAD_DIR if (quality != 'audio' and format != 'mp3') else self.config.AUDIO_DOWNLOAD_DIR
+                if playlist_title != '':
+                    dldirectory = os.path.join(dldirectory, playlist_title)
                 output = self.config.OUTPUT_TEMPLATE
                 output_chapter = self.config.OUTPUT_TEMPLATE_CHAPTER
                 for property, value in entry.items():
@@ -243,10 +246,10 @@ class DownloadQueue:
                 await self.notifier.added(dl)
             return {'status': 'ok'}
         elif etype.startswith('url'):
-            return await self.add(entry['url'], quality, format, already)
+            return await self.add(entry['url'], quality, format, already, playlist_title)
         return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
 
-    async def add(self, url, quality, format, already=None):
+    async def add(self, url, quality, format, already=None, playlist_title=''):
         log.info(f'adding {url}')
         already = set() if already is None else already
         if url in already:
@@ -258,7 +261,7 @@ class DownloadQueue:
             entry = await asyncio.get_running_loop().run_in_executor(None, self.__extract_info, url)
         except yt_dlp.utils.YoutubeDLError as exc:
             return {'status': 'error', 'msg': str(exc)}
-        return await self.__add_entry(entry, quality, format, already)
+        return await self.__add_entry(entry, quality, format, already, playlist_title)
 
     async def cancel(self, ids):
         for id in ids:
