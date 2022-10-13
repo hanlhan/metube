@@ -217,6 +217,8 @@ class DownloadQueue:
         if etype == 'playlist':
             entries = entry['entries']
             playlist_title = entry['title']
+            illegal = r'&|"|\?|<|>|#|{|}|%|~|\\|/'
+            re.sub(illegal, "_", playlist_title)
             log.info(f'playlist detected with {len(entries)} entries')
             playlist_index_digits = len(str(len(entries)))
             results = []
