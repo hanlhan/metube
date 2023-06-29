@@ -17,14 +17,23 @@ class Config:
     _DEFAULTS = {
         'DOWNLOAD_DIR': '.',
         'AUDIO_DOWNLOAD_DIR': '%%DOWNLOAD_DIR',
+        'TEMP_DIR': '%%DOWNLOAD_DIR',
+        'DOWNLOAD_DIRS_INDEXABLE': 'false',
         'CUSTOM_DIRS': 'true',
         'CREATE_CUSTOM_DIRS': 'true',
+        'DELETE_FILE_ON_TRASHCAN': 'false',
         'STATE_DIR': '.',
         'URL_PREFIX': '',
         'OUTPUT_TEMPLATE': '%(title)s.%(ext)s',
         'OUTPUT_TEMPLATE_CHAPTER': '%(title)s - %(section_number)s %(section_title)s.%(ext)s',
         'YTDL_OPTIONS': '{}',
+        'HOST': '0.0.0.0',
+        'PORT': '8081',
+        'BASE_DIR': '',
+        'DARK_MODE': 'false'
     }
+
+    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN', 'DARK_MODE')
 
     def __init__(self):
         for k, v in self._DEFAULTS.items():
@@ -32,6 +41,11 @@ class Config:
         for k, v in self.__dict__.items():
             if v.startswith('%%'):
                 setattr(self, k, getattr(self, v[2:]))
+            if k in self._BOOLEAN:
+                if v not in ('true', 'false', 'True', 'False', 'on', 'off', '1', '0'):
+                    log.error(f'Environment variable "{k}" is set to a non-boolean value "{v}"')
+                    sys.exit(1)
+                setattr(self, k, v in ('true', 'True', 'on', '1'))
         if not self.URL_PREFIX.endswith('/'):
             self.URL_PREFIX += '/'
         try:
@@ -84,7 +98,10 @@ async def add(request):
         raise web.HTTPBadRequest()
     format = post.get('format')
     folder = post.get('folder')
-    status = await dqueue.add(url, quality, format, folder)
+    custom_name_prefix = post.get('custom_name_prefix')
+    if custom_name_prefix is None:
+        custom_name_prefix = ''
+    status = await dqueue.add(url, quality, format, folder, custom_name_prefix)
     return web.Response(text=serializer.encode(status))
 
 @routes.post(config.URL_PREFIX + 'delete')
@@ -137,7 +154,9 @@ def get_custom_dirs():
 
 @routes.get(config.URL_PREFIX)
 def index(request):
-    return web.FileResponse('ui/dist/metube/index.html')
+    response = web.FileResponse(os.path.join(config.BASE_DIR, 'ui/dist/metube/index.html'))
+    response.set_cookie('metube_dark', 'true' if config.DARK_MODE else 'false')
+    return response
 
 if config.URL_PREFIX != '/':
     @routes.get('/')
@@ -148,18 +167,16 @@ if config.URL_PREFIX != '/':
     def index_redirect_dir(request):
         return web.HTTPFound(config.URL_PREFIX)
 
-routes.static(config.URL_PREFIX + 'favicon/', 'favicon')
-routes.static(config.URL_PREFIX + 'download/', config.DOWNLOAD_DIR)
-routes.static(config.URL_PREFIX + 'audio_download/', config.AUDIO_DOWNLOAD_DIR)
-routes.static(config.URL_PREFIX, 'ui/dist/metube')
+routes.static(config.URL_PREFIX + 'favicon/', os.path.join(config.BASE_DIR, 'favicon'))
+routes.static(config.URL_PREFIX + 'download/', config.DOWNLOAD_DIR, show_index=config.DOWNLOAD_DIRS_INDEXABLE)
+routes.static(config.URL_PREFIX + 'audio_download/', config.AUDIO_DOWNLOAD_DIR, show_index=config.DOWNLOAD_DIRS_INDEXABLE)
+routes.static(config.URL_PREFIX, os.path.join(config.BASE_DIR, 'ui/dist/metube'))
 try:
     app.add_routes(routes)
 except ValueError as e:
     if 'ui/dist/metube' in str(e):
         raise RuntimeError('Could not find the frontend UI static assets. Please run `node_modules/.bin/ng build` inside the ui folder') from e
     raise e
-
-
 
 # https://github.com/aio-libs/aiohttp/pull/4615 waiting for release
 # @routes.options(config.URL_PREFIX + 'add')
@@ -179,4 +196,5 @@ app.on_response_prepare.append(on_prepare)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
-    web.run_app(app, port=8081)
+    log.info(f"Listening on {config.HOST}:{config.PORT}")
+    web.run_app(app, host=config.HOST, port=config.PORT, reuse_port=True)
