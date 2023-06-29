@@ -52,20 +52,20 @@ export class DownloadsService {
     });
     socket.fromEvent('added').subscribe((strdata: string) => {
       let data: Download = JSON.parse(strdata);
-      this.queue.set(data.id, data);
+      this.queue.set(data.url, data);
       this.queueChanged.next(null);
     });
     socket.fromEvent('updated').subscribe((strdata: string) => {
       let data: Download = JSON.parse(strdata);
-      let dl: Download = this.queue.get(data.id);
+      let dl: Download = this.queue.get(data.url);
       data.checked = dl.checked;
       data.deleting = dl.deleting;
-      this.queue.set(data.id, data);
+      this.queue.set(data.url, data);
     });
     socket.fromEvent('completed').subscribe((strdata: string) => {
       let data: Download = JSON.parse(strdata);
-      this.queue.delete(data.id);
-      this.done.set(data.id, data);
+      this.queue.delete(data.url);
+      this.done.set(data.url, data);
       this.queueChanged.next(null);
       this.doneChanged.next(null);
     });
@@ -97,8 +97,8 @@ export class DownloadsService {
     return of({status: 'error', msg: msg})
   }
 
-  public add(url: string, quality: string, format: string, folder: string) {
-    return this.http.post<Status>('add', {url: url, quality: quality, format: format, folder: folder}).pipe(
+  public add(url: string, quality: string, format: string, folder: string, customNamePrefix: string) {
+    return this.http.post<Status>('add', {url: url, quality: quality, format: format, folder: folder, custom_name_prefix: customNamePrefix}).pipe(
       catchError(this.handleHTTPError)
     );
   }
@@ -110,7 +110,7 @@ export class DownloadsService {
 
   public delByFilter(where: string, filter: (dl: Download) => boolean) {
     let ids: string[] = [];
-    this[where].forEach((dl: Download) => { if (filter(dl)) ids.push(dl.id) });
+    this[where].forEach((dl: Download) => { if (filter(dl)) ids.push(dl.url) });
     return this.delById(where, ids);
   }
 }

@@ -1,6 +1,6 @@
 import { Component, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
 import { faTrashAlt, faCheckCircle, faTimesCircle } from '@fortawesome/free-regular-svg-icons';
-import { faRedoAlt, faSun, faMoon, faExternalLinkAlt } from '@fortawesome/free-solid-svg-icons';
+import { faRedoAlt, faSun, faMoon, faExternalLinkAlt, faDownload } from '@fortawesome/free-solid-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 import { map, Observable, of } from 'rxjs';
 
@@ -20,6 +20,7 @@ export class AppComponent implements AfterViewInit {
   quality: string;
   format: string;
   folder: string;
+  customNamePrefix: string;
   addInProgress = false;
   darkMode: boolean;
   customDirs$: Observable<string[]>;
@@ -36,7 +37,8 @@ export class AppComponent implements AfterViewInit {
   faTimesCircle = faTimesCircle;
   faRedoAlt = faRedoAlt;
   faSun = faSun;
-  faMoon = faMoon;  
+  faMoon = faMoon;
+  faDownload = faDownload;
   faExternalLinkAlt = faExternalLinkAlt;
 
   constructor(public downloads: DownloadsService, private cookieService: CookieService) {
@@ -82,18 +84,18 @@ export class AppComponent implements AfterViewInit {
   }
 
   showAdvanced() {
-    return this.downloads.configuration['CUSTOM_DIRS'] == 'true';
+    return this.downloads.configuration['CUSTOM_DIRS'];
   }
 
   allowCustomDir(tag: string) {
-    if (this.downloads.configuration['CREATE_CUSTOM_DIRS'] == 'true') {
+    if (this.downloads.configuration['CREATE_CUSTOM_DIRS']) {
       return tag;
     }
     return false;
   }
 
   isAudioType() {
-    return this.quality == 'audio' || this.format == 'mp3';
+    return this.quality == 'audio' || this.format == 'mp3'  || this.format == 'm4a' || this.format == 'opus' || this.format == 'wav'
   }
 
   getMatchingCustomDir() : Observable<string[]> {
@@ -153,15 +155,16 @@ export class AppComponent implements AfterViewInit {
     this.quality = exists ? this.quality : 'best'
   }
 
-  addDownload(url?: string, quality?: string, format?: string, folder?: string) {
+  addDownload(url?: string, quality?: string, format?: string, folder?: string, customNamePrefix?: string) {
     url = url ?? this.addUrl
     quality = quality ?? this.quality
     format = format ?? this.format
     folder = folder ?? this.folder
+    customNamePrefix = customNamePrefix ?? this.customNamePrefix
 
-    console.debug('Downloading: url='+url+' quality='+quality+' format='+format+' folder='+folder);
+    console.debug('Downloading: url='+url+' quality='+quality+' format='+format+' folder='+folder+' customNamePrefix='+customNamePrefix);
     this.addInProgress = true;
-    this.downloads.add(url, quality, format, folder).subscribe((status: Status) => {
+    this.downloads.add(url, quality, format, folder, customNamePrefix).subscribe((status: Status) => {
       if (status.status === 'error') {
         alert(`Error adding URL: ${status.msg}`);
       } else {
@@ -171,8 +174,8 @@ export class AppComponent implements AfterViewInit {
     });
   }
 
-  retryDownload(key: string, url: string, quality: string, format: string, folder: string) {
-    this.addDownload(url, quality, format, folder);
+  retryDownload(key: string, url: string, quality: string, format: string, folder: string, customNamePrefix: string) {
+    this.addDownload(url, quality, format, folder, customNamePrefix);
     this.downloads.delById('done', [key]).subscribe();
   }
 
